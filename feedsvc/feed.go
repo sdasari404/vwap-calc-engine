@@ -11,7 +11,11 @@ import (
 	"time"
 )
 
-type Feed struct {
+type Feed interface {
+	Subscribe(channel string, data trade.Trade, ctx context.Context, wg *sync.WaitGroup) 
+}
+
+type feed struct {
 	conn *websocket.Conn
 	numRetries int
 	maxRetries int
@@ -42,17 +46,17 @@ func New(host string) Feed{
 	u := url.URL{Scheme: "wss", Host: host}
 	log.Printf("connecting to %s", u.String())	
 
-	feed := Feed {
+	feed := feed {
 		numRetries : 0,
 		maxRetries : 5,
 	}
 
 	feed.connect(u)
 
-	return feed
+	return &feed
 }
 
-func (feed *Feed) connect(u url.URL) {
+func (feed *feed) connect(u url.URL) {
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 
 	if err != nil {
@@ -73,7 +77,7 @@ func (feed *Feed) connect(u url.URL) {
 	feed.conn = c
 }
 
-func (feed Feed) Subscribe(channel string, data trade.Trade, ctx context.Context, wg *sync.WaitGroup) {
+func (feed *feed) Subscribe(channel string, data trade.Trade, ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer feed.conn.Close()
 
@@ -103,7 +107,7 @@ func (feed Feed) Subscribe(channel string, data trade.Trade, ctx context.Context
 	 }
 }
 
-func (feed *Feed) listen(data trade.Trade, done chan struct{}) {
+func (feed *feed) listen(data trade.Trade, done chan struct{}) {
 	defer close(done)
 	var lastSeqNo int
 
@@ -127,7 +131,7 @@ func (feed *Feed) listen(data trade.Trade, done chan struct{}) {
     }
 }
 
-func (feed *Feed) stop() {
+func (feed *feed) stop() {
 	closeErr := feed.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	if closeErr != nil {
 	  log.Println("write close:", closeErr)
@@ -135,7 +139,7 @@ func (feed *Feed) stop() {
 	}
 }
 
-func (feed *Feed) writeToWS(requestPayload *payload) {
+func (feed *feed) writeToWS(requestPayload *payload) {
 	feed.writeLock.Lock()
 	defer feed.writeLock.Unlock()
 

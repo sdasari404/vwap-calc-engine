@@ -12,7 +12,11 @@ type Data struct {
 	PriceInCents int64
 }
 
-type Trade struct {
+type Trade interface {
+	Poll (ctx context.Context, wg *sync.WaitGroup)
+}
+
+type trade struct {
 	ProductId string
 	Stream chan Data
 	window []Data
@@ -20,8 +24,8 @@ type Trade struct {
 	totalPriceInCents float64
 }
 
-func New(productId string) (t Trade){
-	return Trade{
+func New(productId string) Trade{
+	return &trade{
 		ProductId : productId,
 		Stream : make(chan Data),
 		window : []Data{},
@@ -30,7 +34,7 @@ func New(productId string) (t Trade){
 	}
 }
 
-func (t *Trade) Add (rawSize, rawPrice string) {
+func (t *trade) add (rawSize, rawPrice string) {
 	size, err := strconv.ParseFloat(rawSize, 64)
 	if err != nil {
 		log.Fatal("Error parsing size: ", err)
@@ -47,7 +51,7 @@ func (t *Trade) Add (rawSize, rawPrice string) {
 	}
 }
 
-func (t *Trade) Poll (ctx context.Context, wg *sync.WaitGroup) {
+func (t *trade) Poll (ctx context.Context, wg *sync.WaitGroup) {
 	log.Printf("Polling %s", t.ProductId)
 
 	defer wg.Done()
@@ -64,7 +68,7 @@ func (t *Trade) Poll (ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-func (t *Trade) update (data Data) {
+func (t *trade) update (data Data) {
 	// Update totals
 	t.totalVolume += data.Size
 	t.totalPriceInCents += data.Size * float64(data.PriceInCents)
@@ -84,7 +88,7 @@ func (t *Trade) update (data Data) {
 	}
 }
 
-func (t *Trade) dispatch (ctx context.Context) {
+func (t *trade) dispatch (ctx context.Context) {
 	currentVWAP := t.totalPriceInCents / t.totalVolume / 100
 	log.Printf("%s: %0.2f", t.ProductId, currentVWAP)
 }
